@@ -6,7 +6,7 @@ Teste la génération de vidéos avec une personne parlant.
 
 import json
 import base64
-from handler_talking_head import handler
+from handler import handler
 
 
 def test_with_url():
