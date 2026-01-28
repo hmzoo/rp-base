@@ -1,22 +1,38 @@
-# Image de base Python optimisée
-FROM python:3.11-slim
+# Image de base avec CUDA pour l'accélération GPU
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+# Installer Python et les dépendances système
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3-pip \
+    git \
+    wget \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Créer un lien symbolique pour python
+RUN ln -s /usr/bin/python3.11 /usr/bin/python
 
 # Définir le répertoire de travail
 WORKDIR /app
 
-# Installer les dépendances système si nécessaire
-# RUN apt-get update && apt-get install -y \
-#     build-essential \
-#     && rm -rf /var/lib/apt/lists/*
-
-# Copier le fichier requirements
+# Copier les requirements et installer les dépendances Python
 COPY requirements.txt .
-
-# Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copier le code de l'application
 COPY handler.py .
 
-# Commande pour démarrer le worker RunPod
+# Créer les répertoires pour les modèles
+RUN mkdir -p /app/models /app/temp
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1
+ENV TEMP_DIR=/app/temp
+
+# Commande pour démarrer le worker
 CMD ["python", "-u", "handler.py"]
