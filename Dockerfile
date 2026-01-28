@@ -1,21 +1,12 @@
-# Image de base avec CUDA pour l'accélération GPU
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+# Image de base Python légère (pour TTS uniquement)
+# Utilisez nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04 quand vous ajouterez Wav2Lip
+FROM python:3.11-slim
 
-# Installer Python et les dépendances système
+# Installer ffmpeg pour traitement audio/vidéo
 RUN apt-get update && apt-get install -y \
-    python3.11 \
-    python3-pip \
-    git \
-    wget \
     ffmpeg \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
+    wget \
     && rm -rf /var/lib/apt/lists/*
-
-# Créer un lien symbolique pour python
-RUN ln -s /usr/bin/python3.11 /usr/bin/python
 
 # Définir le répertoire de travail
 WORKDIR /app
