@@ -202,6 +202,12 @@ def handler(event):
         try:
             audio_path, audio_temp_dir = text_to_speech(text, language, voice)
             print(f"   ✓ Audio généré: {audio_path}")
+            
+            # Encoder l'audio en base64 pour le retour
+            with open(audio_path, 'rb') as audio_file:
+                audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
+                audio_size = os.path.getsize(audio_path)
+            
         except NotImplementedError as e:
             return {
                 'error': 'TTS non configuré',
@@ -224,6 +230,8 @@ def handler(event):
                 'todo': 'Implémenter Wav2Lip ou SadTalker (voir README)',
                 'status': 'partial_success',
                 'audio_generated': True,
+                'audio_base64': audio_base64,
+                'audio_size_bytes': audio_size,
                 'image_processed': True
             }
         
