@@ -239,18 +239,16 @@ def init_wav2lip_model():
             
             # Télécharger le modèle s'il n'existe pas
             if not os.path.exists(checkpoint_path):
-                print(f"   📥 Téléchargement du modèle Wav2Lip (~145 MB)...")
+                print(f"   📥 Téléchargement du modèle Wav2Lip (~416 MB)...")
                 import urllib.request
-                model_url = 'https://github.com/Rudrabha/Wav2Lip/releases/download/models/wav2lip_gan.pth'
+                # URL validée depuis Hugging Face (testée en local)
+                model_url = 'https://huggingface.co/camenduru/Wav2Lip/resolve/main/checkpoints/wav2lip_gan.pth'
                 try:
                     urllib.request.urlretrieve(model_url, checkpoint_path)
-                    print(f"   ✅ Modèle téléchargé avec succès")
+                    print(f"   ✅ Modèle téléchargé depuis Hugging Face")
                 except Exception as e:
-                    print(f"   ⚠️  Tentative URL alternative...")
-                    # URL alternative sur Google Drive ou autre CDN
-                    alt_url = 'https://iiitaphyd-my.sharepoint.com/:u:/g/personal/radrabha_m_research_iiit_ac_in/Eb3LEzbfuKlJiR600lQWRxgBIY27JZg80f7V9jtMfbNDaQ?download=1'
-                    urllib.request.urlretrieve(alt_url, checkpoint_path)
-                    print(f"   ✅ Modèle téléchargé (URL alternative)")
+                    print(f"   ❌ Échec téléchargement: {e}")
+                    raise Exception(f"Impossible de télécharger le modèle Wav2Lip: {e}")
             
             # Charger le modèle
             print(f"   ⏳ Chargement du checkpoint Wav2Lip...")
