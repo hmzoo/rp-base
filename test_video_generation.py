@@ -1,0 +1,118 @@
+"""
+Test de génération vidéo avec Wav2Lip
+"""
+import requests
+import os
+import base64
+from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
+
+API_KEY = os.getenv("RUNPOD_API_KEY")
+ENDPOINT_ID = os.getenv("ENDPOINT_ID")
+
+def test_video_generation():
+    """Teste la génération vidéo complète"""
+    url = f"https://api.runpod.ai/v2/{ENDPOINT_ID}/runsync"
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "input": {
+            "image": "https://picsum.photos/512/512",
+            "text": "Bonjour, je suis un avatar parlant créé avec Wav2Lip et Coqui TTS. Cette vidéo démontre la synchronisation labiale en temps réel.",
+            "voice": "Claribel Dervla",
+            "language": "fr"
+        }
+    }
+    
+    print("="*70)
+    print("🎬 TEST DE GÉNÉRATION VIDÉO WAV2LIP")
+    print("="*70)
+    print(f"\n📝 Texte: {payload['input']['text']}")
+    print(f"🎤 Voix: {payload['input']['voice']}")
+    print(f"🖼️  Image: {payload['input']['image']}")
+    print(f"\n⏳ Envoi de la requête (peut prendre 30-60s)...\n")
+    
+    start = datetime.now()
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=180)
+        elapsed = (datetime.now() - start).total_seconds()
+        
+        if response.status_code == 200:
+            data = response.json()
+            output = data.get('output', {})
+            
+            if output.get('success') and 'video_base64' in output:
+                # Décoder et sauvegarder la vidéo
+                video_data = base64.b64decode(output['video_base64'])
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"video_wav2lip_{timestamp}.mp4"
+                
+                with open(filename, 'wb') as f:
+                    f.write(video_data)
+                
+                video_size_mb = len(video_data) / (1024 * 1024)
+                audio_size_kb = output.get('audio_size_bytes', 0) / 1024
+                
+                print("✅ SUCCÈS!")
+                print(f"\n📊 RÉSULTATS:")
+                print(f"   ⏱️  Temps total: {elapsed:.1f}s")
+                print(f"   🎬 Vidéo: {video_size_mb:.2f} MB")
+                print(f"   🎵 Audio: {audio_size_kb:.1f} KB")
+                print(f"   🎙️  TTS Engine: {output.get('tts_engine', 'N/A')}")
+                print(f"   🎭 Video Engine: {output.get('video_engine', 'N/A')}")
+                print(f"   🗣️  Speaker: {output.get('speaker', 'N/A')}")
+                print(f"   💾 Fichier: {filename}")
+                print(f"\n💡 Pour voir: vlc {filename}")
+                
+                return True
+                
+            elif output.get('audio_generated'):
+                print("⚠️  Vidéo non générée, mais audio disponible")
+                print(f"   Erreur: {output.get('error', 'Unknown')}")
+                print(f"   Détails: {output.get('error_details', 'N/A')}")
+                
+                # Sauvegarder l'audio quand même
+                if 'audio_base64' in output:
+                    audio_data = base64.b64decode(output['audio_base64'])
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"audio_fallback_{timestamp}.wav"
+                    with open(filename, 'wb') as f:
+                        f.write(audio_data)
+                    print(f"   💾 Audio sauvegardé: {filename}")
+                
+                return False
+                
+            else:
+                print(f"❌ Erreur dans la réponse: {output}")
+                return False
+        else:
+            print(f"❌ Erreur HTTP {response.status_code}")
+            print(f"Réponse: {response.text[:500]}")
+            return False
+            
+    except requests.exceptions.Timeout:
+        print(f"⏱️  Timeout après 180s")
+        print(f"💡 Le build initial peut prendre plus de temps (téléchargement modèles)")
+        return False
+    except Exception as e:
+        print(f"❌ Exception: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+if __name__ == "__main__":
+    success = test_video_generation()
+    
+    print(f"\n{'='*70}")
+    if success:
+        print("🎉 Test réussi - Vidéo générée avec succès!")
+    else:
+        print("⚠️  Test échoué - Vérifiez les logs RunPod")
+    print(f"{'='*70}\n")

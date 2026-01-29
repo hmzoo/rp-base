@@ -17,6 +17,6 @@ Pillow>=10.0.0
 # Wav2Lip pour génération vidéo
 opencv-python>=4.8.0
 librosa>=0.10.0
-face-alignment>=1.3.5
+mediapipe>=0.10.0
 scipy>=1.11.0
 numba==0.57.0

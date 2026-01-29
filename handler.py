@@ -231,7 +231,7 @@ def init_wav2lip_model():
         
         try:
             from models import Wav2Lip as Wav2LipModel
-            import face_detection
+            import mediapipe as mp
             
             checkpoint_path = '/app/Wav2Lip/checkpoints/wav2lip_gan.pth'
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -252,7 +252,11 @@ def init_wav2lip_model():
             model = model.to(device)
             model.eval()
             
-            WAV2LIP_MODEL = {'model': model, 'device': device}
+            # Initialiser MediaPipe Face Detection
+            mp_face_detection = mp.solutions.face_detection
+            face_detector = mp_face_detection.FaceDetection(min_detection_confidence=0.5)
+            
+            WAV2LIP_MODEL = {'model': model, 'device': device, 'face_detector': face_detector}
             print("   ✅ Modèle Wav2Lip chargé avec succès")
             
         except Exception as e:
@@ -283,7 +287,7 @@ def generate_talking_head(image_path, audio_path, output_path):
     import numpy as np
     from os import path
     import audio as wav2lip_audio
-    import face_detection
+    import mediapipe as mp
     
     print("   🎬 Initialisation Wav2Lip...")
     
@@ -291,6 +295,7 @@ def generate_talking_head(image_path, audio_path, output_path):
     wav2lip_data = init_wav2lip_model()
     model = wav2lip_data['model']
     device = wav2lip_data['device']
+    face_detector = wav2lip_data['face_detector']
     
     # Paramètres
     mel_step_size = 16
@@ -333,16 +338,39 @@ def generate_talking_head(image_path, audio_path, output_path):
     # Créer les frames de l'image répétées
     full_frames = [frame.copy() for _ in range(len(mel_chunks))]
     
-    # Détecteur de visage
-    detector = face_detection.FaceAlignment(face_detection.LandmarksType._2D, 
-                                           flip_input=False, device=device)
-    
-    # Détecter les visages dans toutes les frames
+    # Détecter les visages avec MediaPipe
     print("   👤 Détection des visages...")
-    face_det_results = face_detection.face_detect(full_frames, detector, pads)
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = face_detector.process(rgb_frame)
     
-    if not face_det_results:
+    if not results.detections:
         raise ValueError("Aucun visage détecté dans l'image")
+    
+    # Utiliser le premier visage détecté
+    detection = results.detections[0]
+    bboxC = detection.location_data.relative_bounding_box
+    ih, iw, _ = frame.shape
+    
+    # Convertir les coordonnées relatives en pixels
+    x1 = int(bboxC.xmin * iw)
+    y1 = int(bboxC.ymin * ih)
+    w = int(bboxC.width * iw)
+    h = int(bboxC.height * ih)
+    x2 = x1 + w
+    y2 = y1 + h
+    
+    # Appliquer les paddings
+    y1 = max(0, y1 - pads[0])
+    y2 = min(ih, y2 + pads[1])
+    x1 = max(0, x1 - pads[2])
+    x2 = min(iw, x2 + pads[3])
+    
+    # Extraire la région du visage
+    face_rect = frame[y1:y2, x1:x2]
+    
+    # Créer face_det_results pour chaque frame (même visage)
+    coords = (y1, y2, x1, x2)
+    face_det_results = [(face_rect.copy(), coords) for _ in range(len(full_frames))]
     
     print("   🎭 Génération du lip-sync...")
     
