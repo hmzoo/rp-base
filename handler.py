@@ -303,6 +303,7 @@ def generate_talking_head(image_path, audio_path, output_path):
     from os import path
     import audio as wav2lip_audio
     import mediapipe as mp
+    import torch
     
     print("   🎬 Initialisation Wav2Lip...")
     
@@ -424,7 +425,8 @@ def datagen(frames, mels, face_det_results, img_size, batch_size):
     for i, m in enumerate(mels):
         idx = i % len(frames)
         frame_to_save = frames[idx].copy()
-        face, coords = face_det_results[idx].copy()
+        face, coords = face_det_results[idx]
+        face = face.copy()  # Copier le numpy array
         
         face = cv2.resize(face, (img_size, img_size))
         

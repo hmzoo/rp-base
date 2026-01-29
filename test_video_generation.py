@@ -6,6 +6,8 @@ import os
 import base64
 from datetime import datetime
 from dotenv import load_dotenv
+from PIL import Image
+import io
 
 load_dotenv()
 
@@ -20,9 +22,23 @@ def test_video_generation():
         "Content-Type": "application/json"
     }
     
+    # Charger l'image locale, la redimensionner et l'encoder en base64
+    image_path = "/home/mrpink/perso/rp-base/medias/originale.png"
+    img = Image.open(image_path)
+    
+    # Redimensionner à 512x512 pour Wav2Lip (recommandé)
+    img = img.convert('RGB')
+    img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+    
+    # Convertir en base64
+    buffer = io.BytesIO()
+    img.save(buffer, format='JPEG', quality=85)
+    image_data = buffer.getvalue()
+    image_base64 = base64.b64encode(image_data).decode('utf-8')
+    
     payload = {
         "input": {
-            "image": "https://picsum.photos/512/512",
+            "image": f"data:image/jpeg;base64,{image_base64}",
             "text": "Bonjour, je suis un avatar parlant créé avec Wav2Lip et Coqui TTS. Cette vidéo démontre la synchronisation labiale en temps réel.",
             "voice": "Claribel Dervla",
             "language": "fr"
@@ -34,7 +50,7 @@ def test_video_generation():
     print("="*70)
     print(f"\n📝 Texte: {payload['input']['text']}")
     print(f"🎤 Voix: {payload['input']['voice']}")
-    print(f"🖼️  Image: {payload['input']['image']}")
+    print(f"🖼️  Image: medias/originale.png ({len(image_data)} bytes)")
     print(f"\n⏳ Envoi de la requête (peut prendre 30-60s)...\n")
     
     start = datetime.now()
@@ -52,24 +68,34 @@ def test_video_generation():
                 video_data = base64.b64decode(output['video_base64'])
                 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"video_wav2lip_{timestamp}.mp4"
+                video_filename = f"video_wav2lip_{timestamp}.mp4"
                 
-                with open(filename, 'wb') as f:
+                with open(video_filename, 'wb') as f:
                     f.write(video_data)
                 
+                # Sauvegarder aussi l'audio
+                if 'audio_base64' in output:
+                    audio_data = base64.b64decode(output['audio_base64'])
+                    audio_filename = f"audio_coqui_{timestamp}.wav"
+                    with open(audio_filename, 'wb') as f:
+                        f.write(audio_data)
+                    audio_size_kb = len(audio_data) / 1024
+                else:
+                    audio_filename = "N/A"
+                    audio_size_kb = output.get('audio_size_bytes', 0) / 1024
+                
                 video_size_mb = len(video_data) / (1024 * 1024)
-                audio_size_kb = output.get('audio_size_bytes', 0) / 1024
                 
                 print("✅ SUCCÈS!")
                 print(f"\n📊 RÉSULTATS:")
                 print(f"   ⏱️  Temps total: {elapsed:.1f}s")
-                print(f"   🎬 Vidéo: {video_size_mb:.2f} MB")
-                print(f"   🎵 Audio: {audio_size_kb:.1f} KB")
+                print(f"   🎬 Vidéo: {video_size_mb:.2f} MB → {video_filename}")
+                print(f"   🎵 Audio: {audio_size_kb:.1f} KB → {audio_filename}")
                 print(f"   🎙️  TTS Engine: {output.get('tts_engine', 'N/A')}")
                 print(f"   🎭 Video Engine: {output.get('video_engine', 'N/A')}")
                 print(f"   🗣️  Speaker: {output.get('speaker', 'N/A')}")
-                print(f"   💾 Fichier: {filename}")
-                print(f"\n💡 Pour voir: vlc {filename}")
+                print(f"\n💡 Pour voir la vidéo: vlc {video_filename}")
+                print(f"💡 Pour écouter l'audio: aplay {audio_filename}")
                 
                 return True
                 
