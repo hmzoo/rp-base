@@ -2,7 +2,8 @@
 runpod>=1.6.0
 
 # Coqui TTS XTTS_v2 (qualité professionnelle)
-TTS>=0.22.0
+TTS==0.22.0
+transformers==4.33.0
 
 # PyTorch pour GPU
 torch>=2.1.0
