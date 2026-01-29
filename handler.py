@@ -1,17 +1,18 @@
 """
-RunPod Serverless - Talking Head API
-====================================
+RunPod Serverless - Talking Head API with Coqui TTS
+===================================================
 Génère une vidéo où une personne sur une image "lit" un texte.
+Utilise Coqui TTS XTTS_v2 pour une qualité audio professionnelle.
 
 Input:
     - image: URL ou base64 de l'image de la personne
     - text: Le texte à faire lire
-    - voice: (optionnel) Type de voix pour la synthèse vocale
+    - voice: (optionnel) Nom du speaker ou fichier audio pour clonage
     - language: (optionnel) Langue du texte (default: 'fr')
 
 Output:
-    - video_url: URL de la vidéo générée
-    - duration: Durée de la vidéo en secondes
+    - audio_base64: Audio encodé en base64
+    - audio_size_bytes: Taille de l'audio
 """
 
 import runpod
@@ -21,6 +22,28 @@ import tempfile
 import requests
 from pathlib import Path
 import json
+import torch
+
+# Initialisation globale du modèle TTS (chargé une seule fois)
+TTS_MODEL = None
+
+def init_tts_model():
+    """Initialise le modèle Coqui TTS XTTS_v2"""
+    global TTS_MODEL
+    
+    if TTS_MODEL is None:
+        print("🔄 Chargement du modèle Coqui TTS XTTS_v2...")
+        from TTS.api import TTS
+        
+        # Vérifier si GPU disponible
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"   Device: {device}")
+        
+        # Charger le modèle multilingue XTTS_v2
+        TTS_MODEL = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+        print("   ✓ Modèle chargé")
+    
+    return TTS_MODEL
 
 
 def download_image(image_input):
@@ -57,42 +80,103 @@ def download_image(image_input):
     return image_path, temp_dir
 
 
-def text_to_speech(text, language='fr', voice='default'):
+def text_to_speech(text, language='fr', voice='Claribel Dervla'):
     """
-    Convertit le texte en audio (TTS).
+    Convertit le texte en audio avec Coqui TTS XTTS_v2.
     
-    Pour une implémentation complète, utilisez:
-    - ElevenLabs API
-    - Google Cloud TTS
-    - Azure TTS
-    - Coqui TTS (open source)
+    Speakers disponibles par défaut:
+    - Claribel Dervla (féminin, clair)
+    - Daisy Studious (féminin, posé)
+    - Gracie Wise (féminin, mature)
+    - Tammie Ema (féminin, jeune)
+    - Alison Dietlinde (féminin, professionnel)
+    - Ana Florence (féminin, chaleureux)
+    - Annmarie Nele (féminin, énergique)
+    - Asya Anara (féminin, doux)
+    - Brenda Stern (féminin, autoritaire)
+    - Gitta Nikolina (féminin, amical)
+    - Henriette Usha (féminin, calme)
+    - Sofia Hellen (féminin, élégant)
+    - Tammy Grit (féminin, dynamique)
+    - Tanja Adelina (féminin, confiant)
+    - Vjollca Johnnie (féminin, expressif)
+    - Andrew Chipper (masculin, jeune)
+    - Badr Odhiambo (masculin, grave)
+    - Dionisio Schuyler (masculin, mature)
+    - Royston Min (masculin, calme)
+    - Viktor Eka (masculin, autoritaire)
+    - Abrahan Mack (masculin, chaleureux)
+    - Adde Michal (masculin, amical)
+    - Baldur Sanjin (masculin, puissant)
+    - Craig Gutsy (masculin, énergique)
+    - Damien Black (masculin, sérieux)
+    - Gilberto Mathias (masculin, professionnel)
+    - Ilkin Urbano (masculin, confiant)
+    - Kazuhiko Atallah (masculin, posé)
+    - Ludvig Milivoj (masculin, doux)
+    - Suad Qasim (masculin, expressif)
+    
+    Clonage de voix:
+    - Passez l'URL ou le chemin d'un fichier audio de 3-10 secondes
     
     Args:
         text: Le texte à synthétiser
-        language: Langue du texte
-        voice: Type de voix
+        language: Code langue (fr, en, es, de, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, ja, hu, ko, hi)
+        voice: Nom du speaker ou URL/chemin audio pour clonage
     
     Returns:
-        str: Chemin vers le fichier audio
+        tuple: (audio_path, temp_dir)
     """
     temp_dir = tempfile.mkdtemp()
     audio_path = os.path.join(temp_dir, "speech.wav")
     
-    # TODO: Implémenter avec un vrai service TTS
-    # Exemple avec gTTS (simple mais qualité basique):
+    # Initialiser le modèle
+    tts = init_tts_model()
+    
+    print(f"   🎤 Synthèse Coqui TTS: langue={language}, speaker={voice}")
+    
     try:
-        from gtts import gTTS
-        tts = gTTS(text=text, lang=language, slow=False)
-        tts.save(audio_path)
+        # Vérifier si c'est un clonage de voix (URL ou fichier)
+        if voice.startswith('http://') or voice.startswith('https://') or os.path.isfile(voice):
+            print(f"   🎭 Clonage de voix depuis: {voice}")
+            # Télécharger l'audio de référence si c'est une URL
+            if voice.startswith('http'):
+                ref_audio = os.path.join(temp_dir, "reference_voice.wav")
+                response = requests.get(voice)
+                with open(ref_audio, 'wb') as f:
+                    f.write(response.content)
+                voice = ref_audio
+            
+            # Générer avec clonage
+            tts.tts_to_file(
+                text=text,
+                speaker_wav=voice,
+                language=language,
+                file_path=audio_path
+            )
+        else:
+            # Utiliser un speaker par défaut
+            tts.tts_to_file(
+                text=text,
+                speaker=voice,
+                language=language,
+                file_path=audio_path
+            )
+        
+        print(f"   ✓ Audio généré: {audio_path}")
         return audio_path, temp_dir
-    except ImportError:
-        # Fallback: créer un fichier audio vide pour le développement
-        print("⚠️  gTTS non installé. Créez un vrai audio avec un service TTS.")
-        # Retourner None pour indiquer qu'il faut implémenter un vrai TTS
-        raise NotImplementedError(
-            "Vous devez installer gTTS ou utiliser un service TTS: "
-            "pip install gTTS"
+        
+    except Exception as e:
+        print(f"   ⚠️  Erreur TTS: {e}")
+        # Fallback sur un speaker par défaut
+        print(f"   🔄 Tentative avec speaker par défaut...")
+        tts.tts_to_file(
+            text=text,
+            speaker="Claribel Dervla",
+            language=language,
+            file_path=audio_path
         )
+        return audio_path, temp_dir
 
 
 def generate_talking_head(image_path, audio_path, output_path):
@@ -114,20 +198,6 @@ def generate_talking_head(image_path, audio_path, output_path):
     """
     
     # TODO: Implémenter avec Wav2Lip ou SadTalker
-    # Exemple avec Wav2Lip:
-    """
-    import cv2
-    from wav2lip import Wav2Lip
-    
-    model = Wav2Lip()
-    video = model.generate(
-        face_path=image_path,
-        audio_path=audio_path,
-        outfile=output_path
-    )
-    """
-    
-    # Pour le développement: simuler la génération
     raise NotImplementedError(
         "Implémentation de Wav2Lip/SadTalker requise. "
         "Voir les instructions dans le README_TALKING_HEAD.md"
@@ -145,35 +215,22 @@ def upload_to_storage(video_path):
         str: URL publique de la vidéo
     """
     # TODO: Implémenter l'upload vers S3 ou autre
-    # Exemple avec boto3:
-    """
-    import boto3
-    s3 = boto3.client('s3')
-    bucket_name = 'your-bucket'
-    key = f'videos/{os.path.basename(video_path)}'
-    
-    s3.upload_file(video_path, bucket_name, key)
-    url = f'https://{bucket_name}.s3.amazonaws.com/{key}'
-    return url
-    """
-    
-    # Pour le développement: retourner un chemin local
     return f"file://{video_path}"
 
 
 def handler(event):
     """
-    Handler principal pour l'API Talking Head.
+    Handler principal pour l'API Talking Head avec Coqui TTS.
     
     Args:
         event: Événement RunPod contenant:
             - input.image: URL ou base64 de l'image
             - input.text: Texte à faire lire
-            - input.voice: (optionnel) Type de voix
+            - input.voice: (optionnel) Speaker ou URL audio pour clonage (default: 'Claribel Dervla')
             - input.language: (optionnel) Langue (default: 'fr')
     
     Returns:
-        dict: Résultat avec video_url et métadonnées
+        dict: Résultat avec audio_base64 et métadonnées
     """
     try:
         job_input = event.get('input', {})
@@ -188,9 +245,9 @@ def handler(event):
         image_input = job_input['image']
         text = job_input['text']
         language = job_input.get('language', 'fr')
-        voice = job_input.get('voice', 'default')
+        voice = job_input.get('voice', 'Claribel Dervla')
         
-        print(f"📥 Traitement: texte='{text[:50]}...', langue={language}")
+        print(f"📥 Traitement: texte='{text[:50]}...', langue={language}, voix={voice}")
         
         # Étape 1: Télécharger/décoder l'image
         print("1️⃣ Téléchargement de l'image...")
@@ -198,22 +255,15 @@ def handler(event):
         print(f"   ✓ Image sauvegardée: {image_path}")
         
         # Étape 2: Générer l'audio (TTS)
-        print("2️⃣ Génération de l'audio (TTS)...")
-        try:
-            audio_path, audio_temp_dir = text_to_speech(text, language, voice)
-            print(f"   ✓ Audio généré: {audio_path}")
-            
-            # Encoder l'audio en base64 pour le retour
-            with open(audio_path, 'rb') as audio_file:
-                audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
-                audio_size = os.path.getsize(audio_path)
-            
-        except NotImplementedError as e:
-            return {
-                'error': 'TTS non configuré',
-                'message': str(e),
-                'todo': 'Installer gTTS ou configurer un service TTS professionnel'
-            }
+        print("2️⃣ Génération de l'audio (Coqui TTS XTTS_v2)...")
+        audio_path, audio_temp_dir = text_to_speech(text, language, voice)
+        
+        # Encoder l'audio en base64 pour le retour
+        with open(audio_path, 'rb') as audio_file:
+            audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
+            audio_size = os.path.getsize(audio_path)
+        
+        print(f"   ✓ Audio encodé: {audio_size} bytes")
         
         # Étape 3: Générer la vidéo talking head
         print("3️⃣ Génération de la vidéo talking head...")
@@ -224,6 +274,12 @@ def handler(event):
             generate_talking_head(image_path, audio_path, output_path)
             print(f"   ✓ Vidéo générée: {output_path}")
         except NotImplementedError as e:
+            # Nettoyage
+            import shutil
+            shutil.rmtree(image_temp_dir, ignore_errors=True)
+            shutil.rmtree(audio_temp_dir, ignore_errors=True)
+            shutil.rmtree(output_dir, ignore_errors=True)
+            
             return {
                 'error': 'Modèle talking head non configuré',
                 'message': str(e),
@@ -232,7 +288,9 @@ def handler(event):
                 'audio_generated': True,
                 'audio_base64': audio_base64,
                 'audio_size_bytes': audio_size,
-                'image_processed': True
+                'image_processed': True,
+                'tts_engine': 'Coqui TTS XTTS_v2',
+                'speaker': voice
             }
         
         # Étape 4: Upload de la vidéo
@@ -252,8 +310,10 @@ def handler(event):
             'video_url': video_url,
             'text': text,
             'language': language,
-            'duration': None,  # TODO: calculer la durée réelle
-            'message': 'Vidéo générée avec succès'
+            'speaker': voice,
+            'duration': None,
+            'message': 'Vidéo générée avec succès',
+            'tts_engine': 'Coqui TTS XTTS_v2'
         }
         
     except Exception as e:
@@ -267,7 +327,7 @@ def handler(event):
 
 if __name__ == "__main__":
     # Mode développement: test local
-    print("🚀 Démarrage du worker RunPod - Talking Head API")
+    print("🚀 Démarrage du worker RunPod - Talking Head API (Coqui TTS)")
     print("=" * 60)
     
     # Démarrer le worker
