@@ -237,6 +237,21 @@ def init_wav2lip_model():
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             print(f"   📱 Device: {device}")
             
+            # Télécharger le modèle s'il n'existe pas
+            if not os.path.exists(checkpoint_path):
+                print(f"   📥 Téléchargement du modèle Wav2Lip (~145 MB)...")
+                import urllib.request
+                model_url = 'https://github.com/Rudrabha/Wav2Lip/releases/download/models/wav2lip_gan.pth'
+                try:
+                    urllib.request.urlretrieve(model_url, checkpoint_path)
+                    print(f"   ✅ Modèle téléchargé avec succès")
+                except Exception as e:
+                    print(f"   ⚠️  Tentative URL alternative...")
+                    # URL alternative sur Google Drive ou autre CDN
+                    alt_url = 'https://iiitaphyd-my.sharepoint.com/:u:/g/personal/radrabha_m_research_iiit_ac_in/Eb3LEzbfuKlJiR600lQWRxgBIY27JZg80f7V9jtMfbNDaQ?download=1'
+                    urllib.request.urlretrieve(alt_url, checkpoint_path)
+                    print(f"   ✅ Modèle téléchargé (URL alternative)")
+            
             # Charger le modèle
             print(f"   ⏳ Chargement du checkpoint Wav2Lip...")
             model = Wav2LipModel()

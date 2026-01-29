@@ -33,11 +33,9 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 # Copier le code de l'application
 COPY handler.py .
 
-# Cloner Wav2Lip et télécharger le modèle (on utilise MediaPipe pour la détection, pas besoin de s3fd)
+# Cloner Wav2Lip (les modèles seront téléchargés au runtime)
 RUN git clone https://github.com/Rudrabha/Wav2Lip.git /app/Wav2Lip && \
-    mkdir -p /app/Wav2Lip/checkpoints && \
-    wget -q -O /app/Wav2Lip/checkpoints/wav2lip_gan.pth \
-        https://github.com/Rudrabha/Wav2Lip/releases/download/models/wav2lip_gan.pth
+    mkdir -p /app/Wav2Lip/checkpoints
 
 # Créer les répertoires pour les modèles
 RUN mkdir -p /app/models /app/temp
