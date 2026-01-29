@@ -23,6 +23,36 @@ import requests
 from pathlib import Path
 import json
 import torch
+import sys
+import subprocess
+
+print(f"🚀 Démarrage du worker RunPod")
+print(f"🐍 Python version: {sys.version}")
+print(f"📍 Working directory: {os.getcwd()}")
+
+# Vérifier les dépendances système
+print(f"\n📦 Vérification des dépendances système...")
+try:
+    result = subprocess.run(['espeak-ng', '--version'], capture_output=True, text=True)
+    print(f"✅ espeak-ng installé")
+except Exception as e:
+    print(f"⚠️ espeak-ng: {e}")
+
+try:
+    import soundfile
+    print(f"✅ soundfile (libsndfile1) v{soundfile.__version__}")
+except Exception as e:
+    print(f"⚠️ soundfile: {e}")
+
+print(f"\n📦 Import TTS...")
+try:
+    from TTS.api import TTS
+    print("✅ TTS importé avec succès")
+except Exception as e:
+    print(f"❌ ERREUR import TTS: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
 
 # Initialisation globale du modèle TTS (chargé une seule fois)
 TTS_MODEL = None
@@ -32,16 +62,26 @@ def init_tts_model():
     global TTS_MODEL
     
     if TTS_MODEL is None:
-        print("🔄 Chargement du modèle Coqui TTS XTTS_v2...")
+        print("\n🔄 Chargement du modèle Coqui TTS XTTS_v2...")
         from TTS.api import TTS
         
         # Vérifier si GPU disponible
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"   Device: {device}")
+        print(f"   📱 Device: {device}")
+        if torch.cuda.is_available():
+            print(f"   🎮 GPU: {torch.cuda.get_device_name(0)}")
+            print(f"   💾 VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
         
-        # Charger le modèle multilingue XTTS_v2
-        TTS_MODEL = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
-        print("   ✓ Modèle chargé")
+        try:
+            # Charger le modèle multilingue XTTS_v2
+            print(f"   ⏳ Téléchargement/chargement du modèle (~2GB)...")
+            TTS_MODEL = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+            print("   ✅ Modèle chargé avec succès")
+        except Exception as e:
+            print(f"   ❌ ERREUR chargement modèle: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     return TTS_MODEL
 
