@@ -231,7 +231,6 @@ def init_wav2lip_model():
         
         try:
             from models import Wav2Lip as Wav2LipModel
-            import mediapipe as mp
             
             checkpoint_path = '/app/Wav2Lip/checkpoints/wav2lip_gan.pth'
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -265,9 +264,12 @@ def init_wav2lip_model():
             model = model.to(device)
             model.eval()
             
-            # Initialiser MediaPipe Face Detection
-            mp_face_detection = mp.solutions.face_detection
-            face_detector = mp_face_detection.FaceDetection(min_detection_confidence=0.5)
+            # Initialiser MediaPipe Face Detection (compatible MediaPipe 0.10+)
+            from mediapipe.python.solutions import face_detection as mp_face_detection
+            face_detector = mp_face_detection.FaceDetection(
+                min_detection_confidence=0.5,
+                model_selection=0  # 0 pour courte distance (< 2m)
+            )
             
             WAV2LIP_MODEL = {'model': model, 'device': device, 'face_detector': face_detector}
             print("   ✅ Modèle Wav2Lip chargé avec succès")
