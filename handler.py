@@ -305,33 +305,22 @@ def handler(event):
         
         print(f"   ✓ Audio encodé: {audio_size} bytes")
         
-        # Étape 3: Générer la vidéo talking head
-        print("3️⃣ Génération de la vidéo talking head...")
-        output_dir = tempfile.mkdtemp()
-        output_path = os.path.join(output_dir, "output_video.mp4")
+        # Pour l'instant, on retourne juste l'audio (talking head à implémenter)
+        # Nettoyage
+        import shutil
+        shutil.rmtree(image_temp_dir, ignore_errors=True)
+        shutil.rmtree(audio_temp_dir, ignore_errors=True)
         
-        try:
-            generate_talking_head(image_path, audio_path, output_path)
-            print(f"   ✓ Vidéo générée: {output_path}")
-        except NotImplementedError as e:
-            # Nettoyage
-            import shutil
-            shutil.rmtree(image_temp_dir, ignore_errors=True)
-            shutil.rmtree(audio_temp_dir, ignore_errors=True)
-            shutil.rmtree(output_dir, ignore_errors=True)
-            
-            return {
-                'error': 'Modèle talking head non configuré',
-                'message': str(e),
-                'todo': 'Implémenter Wav2Lip ou SadTalker (voir README)',
-                'status': 'partial_success',
-                'audio_generated': True,
-                'audio_base64': audio_base64,
-                'audio_size_bytes': audio_size,
-                'image_processed': True,
-                'tts_engine': 'Coqui TTS XTTS_v2',
-                'speaker': voice
-            }
+        return {
+            'success': True,
+            'audio_base64': audio_base64,
+            'audio_size_bytes': audio_size,
+            'tts_engine': 'Coqui TTS XTTS_v2',
+            'speaker': voice,
+            'language': language,
+            'text_length': len(text),
+            'note': 'Audio généré avec succès. Génération vidéo à implémenter (Wav2Lip/SadTalker).'
+        }
         
         # Étape 4: Upload de la vidéo
         print("4️⃣ Upload de la vidéo...")
@@ -344,20 +333,10 @@ def handler(event):
         shutil.rmtree(audio_temp_dir, ignore_errors=True)
         shutil.rmtree(output_dir, ignore_errors=True)
         
-        # Résultat
-        return {
-            'status': 'success',
-            'video_url': video_url,
-            'text': text,
-            'language': language,
-            'speaker': voice,
-            'duration': None,
-            'message': 'Vidéo générée avec succès',
-            'tts_engine': 'Coqui TTS XTTS_v2'
-        }
-        
     except Exception as e:
         import traceback
+        print(f"❌ ERREUR: {e}")
+        traceback.print_exc()
         return {
             'error': str(e),
             'type': type(e).__name__,
