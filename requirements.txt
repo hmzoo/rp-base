@@ -5,9 +5,9 @@ runpod>=1.6.0
 TTS==0.22.0
 transformers==4.33.0
 
-# PyTorch pour GPU
-torch>=2.1.0
-torchaudio>=2.1.0
+# PyTorch pour GPU (version compatible avec Coqui TTS)
+torch==2.1.2
+torchaudio==2.1.2
 
 # Traitement basique
 requests>=2.31.0
