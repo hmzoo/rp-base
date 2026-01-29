@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     git \
     build-essential \
+    cmake \
     libsndfile1 \
     espeak-ng \
     libgl1-mesa-glx \
