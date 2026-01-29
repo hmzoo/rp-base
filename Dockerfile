@@ -1,4 +1,5 @@
 # Image de base CUDA pour GPU (requis pour Coqui TTS XTTS_v2)
+# Updated: 2026-01-29
 FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
 
 # Installer Python et dépendances système
@@ -12,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libsndfile1 \
     espeak-ng \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Créer un lien symbolique pour python
@@ -28,6 +31,15 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 
 # Copier le code de l'application
 COPY handler.py .
+
+# Cloner Wav2Lip et télécharger les modèles
+RUN git clone https://github.com/Rudrabha/Wav2Lip.git /app/Wav2Lip && \
+    mkdir -p /app/Wav2Lip/checkpoints && \
+    mkdir -p /app/Wav2Lip/face_detection/detection/sfd && \
+    wget -q -O /app/Wav2Lip/checkpoints/wav2lip_gan.pth \
+        https://github.com/Rudrabha/Wav2Lip/releases/download/models/wav2lip_gan.pth && \
+    wget -q -O /app/Wav2Lip/face_detection/detection/sfd/s3fd.pth \
+        https://www.adrianbulat.com/downloads/python-fan/s3fd-619a316812.pth
 
 # Créer les répertoires pour les modèles
 RUN mkdir -p /app/models /app/temp

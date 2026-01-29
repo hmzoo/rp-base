@@ -14,7 +14,9 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 Pillow>=10.0.0
 
-# Note: Pour une vraie implémentation talking head, ajoutez:
-# - Wav2Lip ou SadTalker
-# - PyTorch + CUDA
-# Voir README_TALKING_HEAD.md pour instructions complètes
+# Wav2Lip pour génération vidéo
+opencv-python>=4.8.0
+librosa>=0.10.0
+face-alignment>=1.3.5
+scipy>=1.11.0
+numba==0.57.0

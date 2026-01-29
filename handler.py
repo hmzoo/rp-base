@@ -54,8 +54,9 @@ except Exception as e:
     traceback.print_exc()
     raise
 
-# Initialisation globale du modèle TTS (chargé une seule fois)
+# Initialisation globale des modèles (chargés une seule fois)
 TTS_MODEL = None
+WAV2LIP_MODEL = None
 
 def init_tts_model():
     """Initialise le modèle Coqui TTS XTTS_v2"""
@@ -219,14 +220,53 @@ def text_to_speech(text, language='fr', voice='Claribel Dervla'):
         return audio_path, temp_dir
 
 
+def init_wav2lip_model():
+    """Initialise le modèle Wav2Lip pour génération vidéo"""
+    global WAV2LIP_MODEL
+    
+    if WAV2LIP_MODEL is None:
+        print("\n🎬 Chargement du modèle Wav2Lip...")
+        import sys
+        sys.path.append('/app/Wav2Lip')
+        
+        try:
+            from models import Wav2Lip as Wav2LipModel
+            import face_detection
+            
+            checkpoint_path = '/app/Wav2Lip/checkpoints/wav2lip_gan.pth'
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            print(f"   📱 Device: {device}")
+            
+            # Charger le modèle
+            print(f"   ⏳ Chargement du checkpoint Wav2Lip...")
+            model = Wav2LipModel()
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            
+            # Charger les poids du modèle
+            s = checkpoint["state_dict"]
+            new_s = {}
+            for k, v in s.items():
+                new_s[k.replace('module.', '')] = v
+            model.load_state_dict(new_s)
+            
+            model = model.to(device)
+            model.eval()
+            
+            WAV2LIP_MODEL = {'model': model, 'device': device}
+            print("   ✅ Modèle Wav2Lip chargé avec succès")
+            
+        except Exception as e:
+            print(f"   ❌ ERREUR chargement Wav2Lip: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+    
+    return WAV2LIP_MODEL
+
+
 def generate_talking_head(image_path, audio_path, output_path):
     """
-    Génère la vidéo talking head.
-    
-    Pour une implémentation complète, utilisez:
-    - Wav2Lip: https://github.com/Rudrabha/Wav2Lip
-    - SadTalker: https://github.com/OpenTalker/SadTalker
-    - D-ID API (commercial)
+    Génère la vidéo talking head avec Wav2Lip.
     
     Args:
         image_path: Chemin vers l'image
@@ -236,12 +276,134 @@ def generate_talking_head(image_path, audio_path, output_path):
     Returns:
         str: Chemin vers la vidéo générée
     """
+    import sys
+    sys.path.append('/app/Wav2Lip')
     
-    # TODO: Implémenter avec Wav2Lip ou SadTalker
-    raise NotImplementedError(
-        "Implémentation de Wav2Lip/SadTalker requise. "
-        "Voir les instructions dans le README_TALKING_HEAD.md"
-    )
+    import cv2
+    import numpy as np
+    from os import path
+    import audio as wav2lip_audio
+    import face_detection
+    
+    print("   🎬 Initialisation Wav2Lip...")
+    
+    # Charger le modèle
+    wav2lip_data = init_wav2lip_model()
+    model = wav2lip_data['model']
+    device = wav2lip_data['device']
+    
+    # Paramètres
+    mel_step_size = 16
+    img_size = 96
+    fps = 25
+    batch_size = 128
+    pads = [0, 10, 0, 0]  # top, bottom, left, right
+    
+    print("   📸 Détection du visage...")
+    
+    # Charger l'image
+    if not path.isfile(image_path):
+        raise ValueError(f'Image non trouvée: {image_path}')
+    
+    # Créer une vidéo statique à partir de l'image
+    frame = cv2.imread(image_path)
+    
+    if frame is None:
+        raise ValueError(f"Impossible de charger l'image: {image_path}")
+    
+    # Charger l'audio et calculer les mel spectrograms
+    print("   🎵 Traitement de l'audio...")
+    wav = wav2lip_audio.load_wav(audio_path, 16000)
+    mel = wav2lip_audio.melspectrogram(wav)
+    
+    # Calculer le nombre de frames nécessaires
+    mel_chunks = []
+    mel_idx_multiplier = 80. / fps
+    i = 0
+    while True:
+        start_idx = int(i * mel_idx_multiplier)
+        if start_idx + mel_step_size > len(mel[0]):
+            mel_chunks.append(mel[:, len(mel[0]) - mel_step_size:])
+            break
+        mel_chunks.append(mel[:, start_idx: start_idx + mel_step_size])
+        i += 1
+    
+    print(f"   📊 Génération de {len(mel_chunks)} frames...")
+    
+    # Créer les frames de l'image répétées
+    full_frames = [frame.copy() for _ in range(len(mel_chunks))]
+    
+    # Détecteur de visage
+    detector = face_detection.FaceAlignment(face_detection.LandmarksType._2D, 
+                                           flip_input=False, device=device)
+    
+    # Détecter les visages dans toutes les frames
+    print("   👤 Détection des visages...")
+    face_det_results = face_detection.face_detect(full_frames, detector, pads)
+    
+    if not face_det_results:
+        raise ValueError("Aucun visage détecté dans l'image")
+    
+    print("   🎭 Génération du lip-sync...")
+    
+    # Générer la vidéo avec lip-sync
+    gen = datagen(full_frames.copy(), mel_chunks, face_det_results, img_size, batch_size)
+    
+    frame_h, frame_w = full_frames[0].shape[:-1]
+    out = cv2.VideoWriter(output_path, 
+                         cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_w, frame_h))
+    
+    for i, (img_batch, mel_batch, frames, coords) in enumerate(gen):
+        img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
+        mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(device)
+        
+        with torch.no_grad():
+            pred = model(mel_batch, img_batch)
+        
+        pred = pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.
+        
+        for p, f, c in zip(pred, frames, coords):
+            y1, y2, x1, x2 = c
+            p = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
+            f[y1:y2, x1:x2] = p
+            out.write(f)
+    
+    out.release()
+    print(f"   ✅ Vidéo générée: {output_path}")
+    
+    return output_path
+
+
+def datagen(frames, mels, face_det_results, img_size, batch_size):
+    """Générateur de batches pour Wav2Lip"""
+    img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
+    
+    for i, m in enumerate(mels):
+        idx = i % len(frames)
+        frame_to_save = frames[idx].copy()
+        face, coords = face_det_results[idx].copy()
+        
+        face = cv2.resize(face, (img_size, img_size))
+        
+        img_batch.append(face)
+        mel_batch.append(m)
+        frame_batch.append(frame_to_save)
+        coords_batch.append(coords)
+        
+        if len(img_batch) >= batch_size:
+            img_batch, mel_batch = np.asarray(img_batch), np.asarray(mel_batch)
+            img_batch = (img_batch / 255.) * 2 - 1
+            mel_batch = np.reshape(mel_batch, [len(mel_batch), mel_batch.shape[1], 80, -1])
+            
+            yield img_batch, mel_batch, frame_batch, coords_batch
+            img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
+    
+    if len(img_batch) > 0:
+        img_batch, mel_batch = np.asarray(img_batch), np.asarray(mel_batch)
+        img_batch = (img_batch / 255.) * 2 - 1
+        mel_batch = np.reshape(mel_batch, [len(mel_batch), mel_batch.shape[1], 80, -1])
+        
+        yield img_batch, mel_batch, frame_batch, coords_batch
 
 
 def upload_to_storage(video_path):
@@ -298,40 +460,73 @@ def handler(event):
         print("2️⃣ Génération de l'audio (Coqui TTS XTTS_v2)...")
         audio_path, audio_temp_dir = text_to_speech(text, language, voice)
         
-        # Encoder l'audio en base64 pour le retour
+        # Encoder l'audio en base64
         with open(audio_path, 'rb') as audio_file:
             audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
             audio_size = os.path.getsize(audio_path)
         
         print(f"   ✓ Audio encodé: {audio_size} bytes")
         
-        # Pour l'instant, on retourne juste l'audio (talking head à implémenter)
-        # Nettoyage
-        import shutil
-        shutil.rmtree(image_temp_dir, ignore_errors=True)
-        shutil.rmtree(audio_temp_dir, ignore_errors=True)
+        # Étape 3: Générer la vidéo talking head avec Wav2Lip
+        print("3️⃣ Génération de la vidéo talking head (Wav2Lip)...")
+        output_dir = tempfile.mkdtemp()
+        output_path = os.path.join(output_dir, "output_video.mp4")
         
-        return {
-            'success': True,
-            'audio_base64': audio_base64,
-            'audio_size_bytes': audio_size,
-            'tts_engine': 'Coqui TTS XTTS_v2',
-            'speaker': voice,
-            'language': language,
-            'text_length': len(text),
-            'note': 'Audio généré avec succès. Génération vidéo à implémenter (Wav2Lip/SadTalker).'
-        }
-        
-        # Étape 4: Upload de la vidéo
-        print("4️⃣ Upload de la vidéo...")
-        video_url = upload_to_storage(output_path)
-        print(f"   ✓ Vidéo disponible: {video_url}")
-        
-        # Nettoyage
-        import shutil
-        shutil.rmtree(image_temp_dir, ignore_errors=True)
-        shutil.rmtree(audio_temp_dir, ignore_errors=True)
-        shutil.rmtree(output_dir, ignore_errors=True)
+        try:
+            generate_talking_head(image_path, audio_path, output_path)
+            print(f"   ✓ Vidéo générée: {output_path}")
+            
+            # Encoder la vidéo en base64
+            with open(output_path, 'rb') as video_file:
+                video_base64 = base64.b64encode(video_file.read()).decode('utf-8')
+                video_size = os.path.getsize(output_path)
+            
+            print(f"   ✓ Vidéo encodée: {video_size} bytes")
+            
+            # Nettoyage
+            import shutil
+            shutil.rmtree(image_temp_dir, ignore_errors=True)
+            shutil.rmtree(audio_temp_dir, ignore_errors=True)
+            shutil.rmtree(output_dir, ignore_errors=True)
+            
+            return {
+                'success': True,
+                'video_base64': video_base64,
+                'video_size_bytes': video_size,
+                'audio_base64': audio_base64,
+                'audio_size_bytes': audio_size,
+                'tts_engine': 'Coqui TTS XTTS_v2',
+                'video_engine': 'Wav2Lip GAN',
+                'speaker': voice,
+                'language': language,
+                'text_length': len(text),
+                'format': 'mp4'
+            }
+            
+        except Exception as video_error:
+            # Si erreur Wav2Lip, retourner juste l'audio
+            print(f"   ⚠️  Erreur génération vidéo: {video_error}")
+            import traceback
+            traceback.print_exc()
+            
+            # Nettoyage
+            import shutil
+            shutil.rmtree(image_temp_dir, ignore_errors=True)
+            shutil.rmtree(audio_temp_dir, ignore_errors=True)
+            if os.path.exists(output_dir):
+                shutil.rmtree(output_dir, ignore_errors=True)
+            
+            return {
+                'success': False,
+                'error': 'Vidéo non générée (voir logs)',
+                'error_details': str(video_error),
+                'audio_generated': True,
+                'audio_base64': audio_base64,
+                'audio_size_bytes': audio_size,
+                'tts_engine': 'Coqui TTS XTTS_v2',
+                'speaker': voice,
+                'language': language
+            }
         
     except Exception as e:
         import traceback
